@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FanDuel Blackjack Counter — Last Input</title>
+<style>
+  :root { --pad: 14px; --radius: 14px; --fg:#111; --muted:#666; --border:#ddd; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         margin: 0; padding: var(--pad); color: var(--fg); line-height: 1.35; background: #fff; }
+  h1 { font-size: 21px; margin: 0 0 6px 0; }
+  .sub { color: var(--muted); margin-bottom: 10px; }
+  .card { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--pad); margin-bottom: var(--pad); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 12px 12px; border: 1px solid #bbb; border-radius: 12px; background:#fff; font-weight:600; cursor:pointer; touch-action: manipulation; }
+  .btn:active { transform: translateY(1px); }
+  .btn.green{ background:#f5fff6; border-color:#bfe4c3;}
+  .btn.red{ background:#fff5f5; border-color:#f0c2c2;}
+  .btn.pill{ background:#f7f7f7; border-color:#e3e3e3;}
+  .pill { display:inline-block; padding:6px 10px; border-radius:999px; background:#f7f7f7; border:1px solid #e3e3e3; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+  label { font-size: 12px; color:#444; }
+  input[type="number"], select { padding: 10px; border:1px solid #bbb; border-radius: 10px; font-size: 16px; }
+  input[type="range"]{ width:100%; }
+  table { width:100%; border-collapse: collapse; }
+  th, td { border: 1px solid #eee; padding:8px; text-align:left; }
+  th { background:#fafafa; }
+  .kbd { background:#f0f0f0; border:1px solid #ddd; padding:2px 6px; border-radius: 6px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap: var(--pad); }
+  @media (max-width: 780px) { .grid { grid-template-columns: 1fr; } }
+  .ok { color:#0a7a32; font-weight:600; }
+  .warn{ color:#a04d00; font-weight:600; }
+
+  /* Flash highlight for last pressed button */
+  .flash { animation: flash 350ms ease-out; }
+  @keyframes flash {
+    0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.02); transform: scale(1.02); }
+    100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); transform: scale(1.0); }
+  }
+</style>
+</head>
+<body>
+  <h1>FanDuel Blackjack Counter</h1>
+  <div class="sub">Shows your <b>last input</b> so you don't double-enter by accident. FanDuel mode: 8D • S17 • 3:2 • No surrender.</div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>FanDuel Mode</label><br/>
+        <label><input type="checkbox" id="fdMode" checked> Enabled</label>
+      </div>
+      <div>
+        <label>Starting Decks</label><br/>
+        <select id="startDecks">
+          <option value="8" selected>8 decks</option>
+          <option value="6">6 decks</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </div>
+      <div id="customDecksWrap" style="display:none">
+        <label>Custom decks</label><br/>
+        <input id="customDecks" type="number" min="1" step="0.5" value="8">
+      </div>
+      <div>
+        <label>Auto Decks</label><br/>
+        <label><input type="checkbox" id="autoToggle" checked> Enabled</label>
+      </div>
+      <div>
+        <label>Penetration (cut depth)</label><br/>
+        <input type="range" id="pen" min="40" max="85" step="1" value="65">
+        <div class="mono"><span id="penLbl">65</span>% dealt before shuffle</div>
+      </div>
+      <div>
+        <label>Table Min ($)</label><br/>
+        <input id="tableMin" type="number" min="1" step="1" value="5">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Card Input</h3>
+    <div class="row" id="btnRow">
+      <button class="btn green" data-card="2">2</button>
+      <button class="btn green" data-card="3">3</button>
+      <button class="btn green" data-card="4">4</button>
+      <button class="btn green" data-card="5">5</button>
+      <button class="btn green" data-card="6">6</button>
+      <button class="btn pill" data-card="7">7</button>
+      <button class="btn pill" data-card="8">8</button>
+      <button class="btn pill" data-card="9">9</button>
+      <button class="btn red" data-card="10">10 / J / Q / K</button>
+      <button class="btn red" data-card="A">A</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <span class="pill mono">Last input: <span id="lastInput">—</span></span>
+      <button class="btn" id="undoBtn">Undo last</button>
+      <button class="btn" id="newRoundBtn">New round</button>
+      <button class="btn" id="newShoeBtn">New shoe</button>
+      <button class="btn pill" id="dealerAceBtn">Dealer shows Ace</button>
+    </div>
+    <div class="sub">Hotkeys: <span class="kbd">2–9</span>, <span class="kbd">0</span>=10/J/Q/K, <span class="kbd">A</span>, <span class="kbd">U</span>=Undo, <span class="kbd">N</span>=New round, <span class="kbd">R</span>=New shoe, <span class="kbd">I</span>=Insurance check.</div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3 style="margin-top:0">Live Metrics</h3>
+      <div class="row" style="margin-bottom:6px">
+        <span class="pill mono">Running Count: <span id="rc">0</span></span>
+        <span class="pill mono">True Count: <span id="tc">0.00</span></span>
+        <span class="pill mono">EV est/hand: <span id="ev">0.00%</span></span>
+      </div>
+      <div class="row">
+        <span class="pill mono">Cards Dealt: <span id="cardsDealt">0</span></span>
+        <span class="pill mono">Decks Remaining: <span id="decksRem">8.00</span></span>
+        <span class="pill mono">Shoe Size: <span id="shoeSize">8</span></span>
+      </div>
+      <div id="manualDecks" style="display:none; margin-top:10px">
+        <label>Manual decks remaining</label>
+        <input type="range" id="decksRange" min="0.5" max="8" step="0.5" value="8">
+      </div>
+      <div id="ruleTag" class="sub mono ok">S17 • 3:2 • No surrender</div>
+      <div id="insMsg" class="mono"></div>
+      <div id="devMsg" class="mono" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Bet Spread (editable)</h3>
+      <table>
+        <thead><tr><th>TC</th><th>Units</th><th>Example ($)</th></tr></thead>
+        <tbody id="spreadTable">
+          <tr><td>TC ≤ 0</td><td><input class="units" data-key="le0" type="number" min="0" step="1" value="0"></td><td class="ex"></td></tr>
+          <tr><td>TC = +1</td><td><input class="units" data-key="1" type="number" min="0" step="1" value="1"></td><td class="ex"></td></tr>
+          <tr><td>TC = +2</td><td><input class="units" data-key="2" type="number" min="0" step="1" value="2"></td><td class="ex"></td></tr>
+          <tr><td>TC = +3</td><td><input class="units" data-key="3" type="number" min="0" step="1" value="4"></td><td class="ex"></td></tr>
+          <tr><td>TC ≥ +4</td><td><input class="units" data-key="ge4" type="number" min="0" step="1" value="6"></td><td class="ex"></td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:8px" class="mono">Suggested bet now: <span id="betNow">$0</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Session Log</h3>
+    <div id="log" class="mono" style="white-space:pre-wrap; max-height: 220px; overflow: auto; background:#fbfbfb; border: 1px dashed #ddd; padding:10px; border-radius:10px"></div>
+  </div>
+
+<script>
+(function(){
+  const HI_LO = {'2':+1,'3':+1,'4':+1,'5':+1,'6':+1,'7':0,'8':0,'9':0,'10':-1,'A':-1};
+  let RC = 0, cardsDealt = 0, startingDecks = 8;
+  let history = [], lastBtn = null;
+
+  // Elements
+  const fdMode=document.getElementById('fdMode'), startDecks=document.getElementById('startDecks');
+  const customDecksWrap=document.getElementById('customDecksWrap'), customDecks=document.getElementById('customDecks');
+  const autoToggle=document.getElementById('autoToggle'), rcEl=document.getElementById('rc'), tcEl=document.getElementById('tc');
+  const evEl=document.getElementById('ev'), cardsDealtEl=document.getElementById('cardsDealt'), decksRemEl=document.getElementById('decksRem');
+  const shoeSizeEl=document.getElementById('shoeSize'), decksRange=document.getElementById('decksRange'), manualDecks=document.getElementById('manualDecks');
+  const logEl=document.getElementById('log'), tableMin=document.getElementById('tableMin'), betNow=document.getElementById('betNow');
+  const ruleTag=document.getElementById('ruleTag'), insMsg=document.getElementById('insMsg'), devMsg=document.getElementById('devMsg');
+  const pen=document.getElementById('pen'), penLbl=document.getElementById('penLbl'), dealerAceBtn=document.getElementById('dealerAceBtn');
+  const lastInputEl=document.getElementById('lastInput'), btnRow=document.getElementById('btnRow');
+
+  function totalCards(){ return startingDecks*52; }
+  function decksRemaining(){ if (!autoToggle.checked) return parseFloat(decksRange.value||startingDecks);
+    const remCards=Math.max(0,totalCards()-cardsDealt); return remCards/52; }
+  function trueCount(){ const d=Math.max(0.25,decksRemaining()); return RC/d; }
+  function formatMoney(n){ return '$'+(Math.round(n*100)/100).toLocaleString(); }
+  function spreadUnits(tc){ const vals={}; document.querySelectorAll('.units').forEach(i=>vals[i.dataset.key]=parseFloat(i.value||'0'));
+    if (tc<=0) return vals['le0']; if (Math.round(tc)===1) return vals['1']; if (Math.round(tc)===2) return vals['2'];
+    if (Math.round(tc)===3) return vals['3']; return vals['ge4']; }
+  function fdPreset(){ if(fdMode.checked){ startingDecks=8; startDecks.value='8'; customDecksWrap.style.display='none';
+      ruleTag.textContent='S17 • 3:2 • No surrender'; } }
+  function evEstimate(tc){ const base=tc<=0?-0.5:(tc>=4?1.5:(tc===1?0.2:(tc===2?0.6:1.0))); const p=parseFloat(pen.value||65);
+    const scalar=0.7+(p-40)*(0.4/45); return base*scalar; }
+  function checkDeviations(tc){ let m=[]; if(tc>=0)m.push('16 vs 10: STAND'); if(tc>=4)m.push('15 vs 10: STAND');
+    if(tc>=3)m.push('12 vs 2: STAND'); if(tc>=2)m.push('12 vs 3: STAND'); if(tc>=4)m.push('10 vs 10: DOUBLE'); if(tc>=1)m.push('11 vs A: DOUBLE');
+    m.push('(No surrender at this table)'); devMsg.textContent=m.join('  •  '); }
+  function render(){ const tc=trueCount(); rcEl.textContent=RC; cardsDealtEl.textContent=cardsDealt;
+    decksRemEl.textContent=decksRemaining().toFixed(2); shoeSizeEl.textContent=startingDecks; tcEl.textContent=(Math.round(tc*100)/100).toFixed(2);
+    const est=evEstimate(Math.round(tc)); evEl.textContent=(Math.round(est*100)/100).toFixed(2)+'%';
+    const tm=parseFloat(tableMin.value||'0'); document.querySelectorAll('#spreadTable tr').forEach(tr=>{ const u=parseFloat(tr.querySelector('.units').value||'0'); tr.querySelector('.ex').textContent=formatMoney(u*tm); });
+    const unitsNow=spreadUnits(parseFloat(tcEl.textContent)); betNow.textContent=formatMoney(unitsNow*tm); checkDeviations(Math.round(tc)); }
+  function highlightButtonFor(card){ if(lastBtn) lastBtn.classList.remove('flash'); const btn=[...btnRow.querySelectorAll('button')].find(b=>b.dataset.card===card);
+    if(btn){ btn.classList.add('flash'); lastBtn=btn; try{window.navigator.vibrate&&window.navigator.vibrate(10);}catch(e){} } }
+  function addCard(v){ RC+=HI_LO[v]; cardsDealt+=1; history.push({type:'card',value:v,rc:RC,cardsDealt}); lastInputEl.textContent=v; highlightButtonFor(v); render(); }
+  function undo(){ for(let i=history.length-1;i>=0;i--){ const h=history[i]; if(h.type==='card'){ RC-=HI_LO[h.value]; cardsDealt=Math.max(0,cardsDealt-1);
+      history.push({type:'undo',value:h.value,rc:RC,cardsDealt}); lastInputEl.textContent='⟲ undo '+h.value; render(); return; } } }
+  function newRound(){ history.push({type:'round',rc:RC,cardsDealt}); lastInputEl.textContent='—'; render(); }
+  function newShoe(){ RC=0; cardsDealt=0; history.push({type:'reset'}); lastInputEl.textContent='—'; render(); }
+  function insuranceCheck(){ const tc=trueCount(); if(Math.round(tc)>=3){ insMsg.innerHTML='<span class="ok">Insurance: TAKE (TC ≥ +3)</span>'; }
+    else { insMsg.innerHTML='<span class="warn">Insurance: Decline (need TC ≥ +3)</span>'; } }
+
+  document.querySelectorAll('button[data-card]').forEach(b=>b.addEventListener('click',()=>addCard(b.dataset.card)));
+  document.getElementById('undoBtn').addEventListener('click',undo);
+  document.getElementById('newRoundBtn').addEventListener('click',newRound);
+  document.getElementById('newShoeBtn').addEventListener('click',newShoe);
+  document.getElementById('dealerAceBtn').addEventListener('click',insuranceCheck);
+
+  fdMode.addEventListener('change',()=>{fdPreset();render();});
+  startDecks.addEventListener('change',()=>{ if(startDecks.value==='custom'){ customDecksWrap.style.display=''; startingDecks=parseFloat(customDecks.value||'8'); }
+    else { customDecksWrap.style.display='none'; startingDecks=parseFloat(startDecks.value); } if(autoToggle.checked){ decksRange.value=startingDecks; } render(); });
+  customDecks.addEventListener('input',()=>{ if(startDecks.value==='custom'){ startingDecks=Math.max(0.5,parseFloat(customDecks.value||'8')); if(autoToggle.checked) decksRange.value=startingDecks; render(); } });
+  autoToggle.addEventListener('change',()=>{ manualDecks.style.display=autoToggle.checked?'none':''; if(autoToggle.checked){ decksRange.value=startingDecks; } render(); });
+  document.getElementById('decksRange')?.addEventListener('input',render);
+  tableMin.addEventListener('input',render);
+  document.querySelectorAll('.units').forEach(inp=>inp.addEventListener('input',render));
+  pen.addEventListener('input',()=>{ penLbl.textContent=pen.value; render(); });
+
+  document.addEventListener('keydown',(e)=>{ const k=e.key.toUpperCase(); if(k>='2'&&k<='9') addCard(k); else if(k==='0') addCard('10'); else if(k==='A') addCard('A');
+    else if(k==='U') undo(); else if(k==='N') newRound(); else if(k==='R') newShoe(); else if(k==='I') insuranceCheck(); });
+
+  fdPreset(); document.getElementById('decksRange').value=startingDecks; render(); logEl.textContent='FanDuel mode ready. Tap cards to begin.';
+})();
+</script>
+</body>
+</html>
