@@ -1,0 +1,578 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI-Assisted Blackjack Counter (Hi-Lo)</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif;margin:24px;line-height:1.35}
+    h1{margin:0 0 8px 0;font-size:22px}
+    .sub{color:#666;margin-bottom:16px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .card{border:1px solid #ddd;border-radius:10px;padding:14px}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .btn{padding:10px 12px;border:1px solid #bbb;border-radius:8px;background:#fff;cursor:pointer;font-weight:600}
+    .btn:active{transform:translateY(1px)}
+    .btn.red{border-color:#f3bdbd;background:#fff5f5}
+    .btn.green{border-color:#bde5bd;background:#f5fff5}
+    .btn.blue{border-color:#bcd7f3;background:#f5fbff}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#f7f7f7;border:1px solid #e3e3e3}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace}
+    label{font-size:12px;color:#555}
+    input[type="number"], input[type="text"]{padding:8px;border:1px solid #bbb;border-radius:8px}
+    input[type="range"]{width:100%}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #eee;padding:8px;text-align:left}
+    th{background:#fafafa}
+    .small{font-size:12px;color:#666}
+    .muted{color:#777}
+    .footer{margin-top:14px;font-size:12px;color:#777}
+    .kbd{background:#f0f0f0;border:1px solid #ddd;padding:2px 6px;border-radius:6px}
+    .col-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .col-4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  </style>
+</head>
+<body>
+  <h1>AI-Assisted Blackjack Counter (Hi-Lo)</h1>
+  <div class="sub">Manual input (TOS-safe). Click buttons or type keys to record cards. True Count & bet suggestion update instantly.</div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Card Input</h3>
+      <div class="row">
+        <button class="btn green" data-card="2">2</button>
+        <button class="btn green" data-card="3">3</button>
+        <button class="btn green" data-card="4">4</button>
+        <button class="btn green" data-card="5">5</button>
+        <button class="btn green" data-card="6">6</button>
+        <button class="btn pill" data-card="7">7</button>
+        <button class="btn pill" data-card="8">8</button>
+        <button class="btn pill" data-card="9">9</button>
+        <button class="btn red" data-card="10">10/J/Q/K</button>
+        <button class="btn red" data-card="A">A</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn blue" id="undoBtn">Undo last</button>
+        <button class="btn" id="newRoundBtn">New Round (separator)</button>
+        <button class="btn" id="clearBtn">Clear shoe</button>
+      </div>
+      <div class="small muted" style="margin-top:8px">
+        Keyboard: <span class="kbd">2..9</span>, <span class="kbd">0</span>=10, <span class="kbd">A</span>=Ace, <span class="kbd">U</span>=Undo, <span class="kbd">N</span>=New Round.
+      </div>
+
+      <h3 style="margin-top:16px">Shoe & Bank</h3>
+      <div class="row" style="gap:16px">
+        <div style="flex:1">
+          <label>Decks Remaining</label>
+          <input type="range" min="0.5" max="8" value="6.0" step="0.5" id="decksRange"/>
+          <div><span class="pill"><span id="decksVal">6.0</span> decks</span></div>
+        </div>
+        <div>
+          <label>Table Min</label><br/>
+          <input type="number" id="tableMin" value="5" step="1" min="1"/>
+        </div>
+        <div>
+          <label>Bankroll</label><br/>
+          <input type="number" id="bankroll" value="500" step="10" min="0"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Live Metrics</h3>
+      <div class="row">
+        <div class="pill mono">Running Count: <span id="rc">0</span></div>
+        <div class="pill mono">True Count: <span id="tc">0.00</span></div>
+        <div class="pill mono">Hands Logged: <span id="hands">0</span></div>
+      </div>
+      <div style="margin-top:10px">
+        <label>Recommended bet (editable spread):</label>
+        <table>
+          <thead><tr><th>True Count</th><th>Units</th><th>Example ($)</th></tr></thead>
+          <tbody id="spreadTable">
+            <tr><td>TC ≤ 0</td><td><input type="number" value="0" step="1" min="0" class="units" data-thresh="le0"/></td><td class="ex"></td></tr>
+            <tr><td>TC = +1</td><td><input type="number" value="1" step="1" min="0" class="units" data-thresh="1"/></td><td class="ex"></td></tr>
+            <tr><td>TC = +2</td><td><input type="number" value="2" step="1" min="0" class="units" data-thresh="2"/></td><td class="ex"></td></tr>
+            <tr><td>TC = +3</td><td><input type="number" value="4" step="1" min="0" class="units" data-thresh="3"/></td><td class="ex"></td></tr>
+            <tr><td>TC ≥ +4</td><td><input type="number" value="6" step="1" min="0" class="units" data-thresh="ge4"/></td><td class="ex"></td></tr>
+          </tbody>
+        </table>
+        <div style="margin-top:8px" class="mono">Suggested Bet Now: <span id="betNow">$0</span></div>
+      </div>
+      <div class="small muted" style="margin-top:8px">
+        Units are multiples of table minimum. Example: if table min = $5 and units = 4 → bet $20.
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>Session Log</h3>
+    <div class="small muted">A simple timeline of card entries (for sanity checks). Export to CSV anytime.</div>
+    <div class="row" style="margin:8px 0">
+      <input id="note" type="text" placeholder="Optional note for next entry (e.g., Dealer shows 10)"/>
+      <button class="btn" id="exportBtn">Export CSV</button>
+    </div>
+    <div id="log" class="mono small" style="white-space:pre-wrap;max-height:240px;overflow:auto;border:1px dashed #ddd;padding:10px;border-radius:8px;background:#fbfbfb"></div>
+  </div>
+
+  
+<div class="card" style="margin-top:16px">
+  <h3>Strategy Helper (with Hi‑Lo Index Deviations)</h3>
+  <div class="small muted">Defaults to multi-deck rules. Toggle table rules if needed. Uses current True Count from the counter above.</div>
+  <div class="row" style="gap:16px;margin-top:8px">
+    <div>
+      <label>Rules</label>
+      <div class="row">
+        <label><input type="checkbox" id="ruleS17" checked/> Dealer S17</label>
+        <label><input type="checkbox" id="ruleDAS" checked/> DAS allowed</label>
+        <label><input type="checkbox" id="ruleLS" checked/> Late Surrender</label>
+      </div>
+    </div>
+    <div>
+      <label>Hand Type</label><br/>
+      <select id="handType">
+        <option value="hard">Hard Total</option>
+        <option value="soft">Soft Total (A+X)</option>
+        <option value="pair">Pair</option>
+      </select>
+    </div>
+    <div>
+      <label>Player Total / Rank</label><br/>
+      <input type="number" id="playerVal" value="16" min="4" max="21"/>
+      <span class="small muted" id="playerValHint">(Hard 4–21, Soft 13–20, Pair rank 2–11 with 11=A)</span>
+    </div>
+    <div>
+      <label>Dealer Upcard</label><br/>
+      <select id="dealerUp">
+        <option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>A</option>
+      </select>
+    </div>
+    <div style="align-self:flex-end">
+      <button class="btn blue" id="adviseBtn">Get Advice</button>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:12px">
+    <div class="pill mono">Current TC: <span id="tcForAdvice">0.00</span></div>
+    <div class="pill mono">Advice: <span id="adviceText">—</span></div>
+  </div>
+  <div class="small muted" style="margin-top:6px">
+    Index set includes the **Illustrious 18** (Hi‑Lo) plus **Fab 4** surrender indexes for multi‑deck. When an index triggers, it overrides basic strategy.
+  </div>
+</div>
+
+  <div class="footer">
+    Hi-Lo values: 2–6 = +1, 7–9 = 0, 10/J/Q/K/A = –1. True Count = RC ÷ decks remaining. This tool is manual-input by design to remain TOS-safe.
+  </div>
+
+<script>
+(function(){
+  const rcEl = document.getElementById('rc');
+  const tcEl = document.getElementById('tc');
+  const handsEl = document.getElementById('hands');
+  const decksRange = document.getElementById('decksRange');
+  const decksVal = document.getElementById('decksVal');
+  const tableMin = document.getElementById('tableMin');
+  const bankroll = document.getElementById('bankroll');
+  const betNow = document.getElementById('betNow');
+  const logEl = document.getElementById('log');
+  const noteInput = document.getElementById('note');
+
+  let RC = 0;
+  let hands = 0;
+  let history = []; // entries: {type:'card'|'round'|'undo', value:'10'|'A'|... , rc}
+  const HI_LO = {
+    '2': +1, '3': +1, '4': +1, '5': +1, '6': +1,
+    '7': 0, '8': 0, '9': 0,
+    '10': -1, 'A': -1
+  };
+
+  function decksRemaining(){
+    return parseFloat(decksRange.value);
+  }
+
+  function trueCount(){
+    const d = Math.max(0.25, decksRemaining());
+    return RC / d;
+  }
+
+  function spreadUnits(tc){
+    // Pull from editable table
+    const unitInputs = document.querySelectorAll('.units');
+    const values = {};
+    unitInputs.forEach(inp => {
+      values[inp.dataset.thresh] = Math.max(0, parseInt(inp.value || '0', 10));
+    });
+    if (tc <= 0) return values['le0'];
+    if (Math.round(tc) === 1) return values['1'];
+    if (Math.round(tc) === 2) return values['2'];
+    if (Math.round(tc) === 3) return values['3'];
+    return values['ge4'];
+  }
+
+  function formatMoney(n){
+    return '$' + (Math.round(n*100)/100).toLocaleString();
+  }
+
+  function updateExamples(){
+    const rows = document.querySelectorAll('#spreadTable tr');
+    rows.forEach(r => {
+      const units = parseFloat(r.querySelector('.units').value || '0');
+      const ex = r.querySelector('.ex');
+      const tm = parseFloat(tableMin.value || '0');
+      ex.textContent = formatMoney(units * tm);
+    });
+  }
+
+  function render(){
+    rcEl.textContent = RC;
+    const tcVal = trueCount();
+    tcEl.textContent = (Math.round(tcVal*100)/100).toFixed(2);
+    decksVal.textContent = decksRemaining().toFixed(1);
+    const units = spreadUnits(tcVal);
+    betNow.textContent = formatMoney(units * parseFloat(tableMin.value || '0'));
+    updateExamples();
+    renderLog();
+  }
+
+  function renderLog(){
+    const lines = [];
+    lines.push(`RC=${RC} | TC=${(Math.round(trueCount()*100)/100).toFixed(2)} | decks=${decksRemaining().toFixed(1)} | hands=${hands}`);
+    lines.push('---');
+    history.forEach((h,i) => {
+      if (h.type === 'round') {
+        lines.push(`
+[Round ${h.n}] — ${h.note || ''}`);
+      } else if (h.type === 'card') {
+        lines.push(`  + ${h.value}  (RC=${h.rc}) ${h.note ? '— '+h.note : ''}`);
+      } else if (h.type === 'undo') {
+        lines.push(`  ⟲ undo ${h.value}  (RC=${h.rc})`);
+      }
+    });
+    logEl.textContent = lines.join('\n');
+  }
+
+  function addCard(v, note=''){
+    const delta = HI_LO[v];
+    if (delta === undefined) return;
+    RC += delta;
+    history.push({type:'card', value:v, rc:RC, note});
+    render();
+  }
+
+  function undo(){
+    // Find last card entry
+    for (let i = history.length-1; i >= 0; i--) {
+      const h = history[i];
+      if (h.type === 'card') {
+        RC -= HI_LO[h.value];
+        history.push({type:'undo', value:h.value, rc:RC});
+        render();
+        return;
+      }
+    }
+  }
+
+  function newRound(){
+    hands += 1;
+    history.push({type:'round', n:hands, note:noteInput.value.trim()});
+    noteInput.value='';
+    render();
+  }
+
+  function clearAll(){
+    RC = 0;
+    hands = 0;
+    history = [];
+    render();
+  }
+
+  function exportCSV(){
+    const rows = [['step','type','value','running_count','true_count','decks_remaining','hand','note']];
+    let hand = 0;
+    history.forEach((h, idx) => {
+      if (h.type === 'round') hand = h.n;
+      const tc = (Math.round(trueCount()*100)/100).toFixed(2);
+      rows.push([idx+1, h.type, h.value || '', h.rc || RC, tc, decksRemaining().toFixed(1), hand, h.note || '']);
+    });
+    const csv = rows.map(r => r.map(x => `"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'blackjack_session_log.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Wire buttons
+  document.querySelectorAll('button[data-card]').forEach(b => {
+    b.addEventListener('click', () => addCard(b.dataset.card, noteInput.value.trim()));
+  });
+  document.getElementById('undoBtn').addEventListener('click', undo);
+  document.getElementById('newRoundBtn').addEventListener('click', newRound);
+  document.getElementById('clearBtn').addEventListener('click', clearAll);
+  document.getElementById('exportBtn').addEventListener('click', exportCSV);
+  decksRange.addEventListener('input', render);
+  tableMin.addEventListener('input', render);
+  bankroll.addEventListener('input', render);
+  document.querySelectorAll('.units').forEach(inp => inp.addEventListener('input', render));
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    const k = e.key.toUpperCase();
+    if (k>='2' && k<='9') addCard(k, noteInput.value.trim());
+    else if (k==='0') addCard('10', noteInput.value.trim());
+    else if (k==='A') addCard('A', noteInput.value.trim());
+    else if (k==='U') undo();
+    else if (k==='N') newRound();
+  });
+
+  
+// ===== Strategy Helper with Index Deviations =====
+const ruleS17 = document.getElementById('ruleS17');
+const ruleDAS = document.getElementById('ruleDAS');
+const ruleLS  = document.getElementById('ruleLS');
+const handType = document.getElementById('handType');
+const playerVal = document.getElementById('playerVal');
+const dealerUp = document.getElementById('dealerUp');
+const adviseBtn = document.getElementById('adviseBtn');
+const tcForAdvice = document.getElementById('tcForAdvice');
+const adviceText = document.getElementById('adviceText');
+const playerValHint = document.getElementById('playerValHint');
+
+handType.addEventListener('change', () => {
+  if (handType.value === 'hard') {
+    playerValHint.textContent = '(Hard 4–21)';
+    playerVal.min = 4; playerVal.max = 21; playerVal.value = Math.min(16, Math.max(4, parseInt(playerVal.value||'16',10)));
+  } else if (handType.value === 'soft') {
+    playerValHint.textContent = '(Soft total A+X = 13–20)';
+    playerVal.min = 13; playerVal.max = 20; playerVal.value = Math.min(20, Math.max(13, parseInt(playerVal.value||'18',10)));
+  } else {
+    playerValHint.textContent = '(Pair rank 2–11 with 11=A)';
+    playerVal.min = 2; playerVal.max = 11; playerVal.value = Math.min(11, Math.max(2, parseInt(playerVal.value||'8',10)));
+  }
+});
+
+function getCurrentTC(){
+  return parseFloat(tcEl.textContent || '0') || 0;
+}
+
+// Basic strategy (multi-deck, default S17 & DAS, late surrender optional)
+function basicStrategy(handType, p, up, opts){
+  const {S17, DAS, LS} = opts;
+  // Insurance handled separately.
+  // Pair strategy
+  if (handType === 'pair'){
+    // p=2..11 where 11=A
+    if (p===11) { // AA
+      return 'SPLIT';
+    }
+    if (p===10) { // TT
+      return 'STAND';
+    }
+    if (p===9){
+      if (['7','10','A'].includes(up)) return (up==='7') ? 'SPLIT' : 'STAND'; // 9,9 vs 7 split, vs 10/A stand
+      return 'SPLIT';
+    }
+    if (p===8) return 'SPLIT';
+    if (p===7) {
+      if (['8','9','10','A'].includes(up)) return 'HIT';
+      return 'SPLIT';
+    }
+    if (p===6){
+      if (['7','8','9','10','A'].includes(up)) return 'HIT';
+      return DAS ? 'SPLIT' : (['2','3'].includes(up) ? 'HIT' : 'SPLIT');
+    }
+    if (p===5){ // treated like hard 10
+      return (['10','A'].includes(up)) ? 'HIT' : 'DOUBLE';
+    }
+    if (p===4){
+      if (['5','6'].includes(up)) return DAS ? 'SPLIT' : 'HIT';
+      return 'HIT';
+    }
+    if (p===3 || p===2){
+      if (['8','9','10','A'].includes(up)) return 'HIT';
+      return DAS ? 'SPLIT' : (['2','3'].includes(up) ? 'HIT' : 'SPLIT');
+    }
+  }
+
+  // Soft totals (A+X)
+  if (handType === 'soft'){
+    const t = p; // 13..20
+    if (t<=17){ // A2-A6
+      if (['5','6'].includes(up)) return 'DOUBLE';
+      if (['4'].includes(up) && t>=16 && t<=17) return 'DOUBLE';
+      if (['3'].includes(up) && t===17) return 'DOUBLE';
+      return 'HIT';
+    }
+    if (t===18){ // A7
+      if (['3','4','5','6'].includes(up)) return 'DOUBLE';
+      if (['2','7','8'].includes(up)) return 'STAND';
+      return 'HIT'; // 9,10,A
+    }
+    if (t>=19){ // A8, A9
+      return 'STAND';
+    }
+  }
+
+  // Hard totals
+  if (handType === 'hard'){
+    const t = p;
+    // Late surrender candidates
+    if (LS){
+      if (t===16 && ['9','10','A'].includes(up)) return 'SURRENDER_OR_'+( (up==='9') ? 'STAND' : 'HIT' );
+      if (t===15 && ['10','A'].includes(up)) return 'SURRENDER_OR_HIT';
+    }
+    if (t<=8) return 'HIT';
+    if (t===9){
+      if (['3','4','5','6'].includes(up)) return 'DOUBLE';
+      return 'HIT';
+    }
+    if (t===10){
+      if (['10','A'].includes(up)) return 'HIT';
+      return 'DOUBLE';
+    }
+    if (t===11){
+      if (up==='A' && S17) return 'DOUBLE'; // many S17 charts double vs A
+      if (up==='A' && !S17) return 'DOUBLE'; // keep it simple
+      return 'DOUBLE';
+    }
+    if (t===12){
+      if (['4','5','6'].includes(up)) return 'STAND';
+      return 'HIT';
+    }
+    if (t>=13 && t<=16){
+      if (['2','3','4','5','6'].includes(up)) return 'STAND';
+      return 'HIT';
+    }
+    // 17+
+    return 'STAND';
+  }
+  return 'HIT';
+}
+
+// Hi-Lo index deviations (Illustrious 18 + Fab 4) – multi-deck defaults
+// Represent as rules that trigger at or above a threshold TC, changing action.
+// Format: key: {thresh, whenTrue: action, match: function to check if pattern applies}
+const indexRules = [
+  // Insurance
+  {name:'Insurance', thresh: 3, applies: (ctx)=> ctx.dealer==='A', whenTrue: 'TAKE_INSURANCE'},
+
+  // Stand 16 vs 10 at TC >= 0
+  {name:'16v10', thresh: 0, applies: (ctx)=> ctx.type==='hard' && ctx.p===16 && ctx.dealer==='10', whenTrue:'STAND'},
+  // Stand 15 vs 10 at TC >= +4
+  {name:'15v10', thresh: 4, applies: (ctx)=> ctx.type==='hard' && ctx.p===15 && ctx.dealer==='10', whenTrue:'STAND'},
+  // Stand 16 vs 9 at TC >= +5
+  {name:'16v9', thresh: 5, applies: (ctx)=> ctx.type==='hard' && ctx.p===16 && ctx.dealer==='9', whenTrue:'STAND'},
+
+  // 12 vs 2 stand at +3
+  {name:'12v2', thresh: 3, applies: (ctx)=> ctx.type==='hard' && ctx.p===12 && ctx.dealer==='2', whenTrue:'STAND'},
+  // 12 vs 3 stand at +2
+  {name:'12v3', thresh: 2, applies: (ctx)=> ctx.type==='hard' && ctx.p===12 && ctx.dealer==='3', whenTrue:'STAND'},
+  // 12 vs 4 stand at 0 (already basic stands vs 4/5/6 but keep explicit)
+  {name:'12v4', thresh: 0, applies: (ctx)=> ctx.type==='hard' && ctx.p===12 && ctx.dealer==='4', whenTrue:'STAND'},
+
+  // 10 vs 10 double at +4
+  {name:'10v10', thresh: 4, applies: (ctx)=> ctx.type==='hard' && ctx.p===10 && ctx.dealer==='10', whenTrue:'DOUBLE'},
+  // 10 vs A double at +4
+  {name:'10vA', thresh: 4, applies: (ctx)=> ctx.type==='hard' && ctx.p===10 && ctx.dealer==='A', whenTrue:'DOUBLE'},
+  // 11 vs A double at +1
+  {name:'11vA', thresh: 1, applies: (ctx)=> ctx.type==='hard' && ctx.p===11 && ctx.dealer==='A', whenTrue:'DOUBLE'},
+  // 9 vs 2 double at +1
+  {name:'9v2', thresh: 1, applies: (ctx)=> ctx.type==='hard' && ctx.p===9 && ctx.dealer==='2', whenTrue:'DOUBLE'},
+  // 9 vs 7 double at +3
+  {name:'9v7', thresh: 3, applies: (ctx)=> ctx.type==='hard' && ctx.p===9 && ctx.dealer==='7', whenTrue:'DOUBLE'},
+
+  // Pair deviation often cited: 9,9 vs 7 split at +3 (many basics already split; include as safeguard)
+  {name:'99v7', thresh: 3, applies: (ctx)=> ctx.type==='pair' && ctx.p===9 && ctx.dealer==='7', whenTrue:'SPLIT'},
+
+  // Fab 4 (Late Surrender indices)
+  {name:'Surr 15v9', thresh: 2, applies: (ctx)=> ctx.LS && ctx.type==='hard' && ctx.p===15 && ctx.dealer==='9', whenTrue:'SURRENDER'},
+  {name:'Surr 15v10', thresh: 0, applies: (ctx)=> ctx.LS && ctx.type==='hard' && ctx.p===15 && ctx.dealer==='10', whenTrue:'SURRENDER'},
+  {name:'Surr 15vA', thresh: 1, applies: (ctx)=> ctx.LS && ctx.type==='hard' && ctx.p===15 && ctx.dealer==='A', whenTrue:'SURRENDER'},
+  {name:'Surr 14v10', thresh: 3, applies: (ctx)=> ctx.LS && ctx.type==='hard' && ctx.p===14 && ctx.dealer==='10', whenTrue:'SURRENDER'},
+];
+
+function applyIndices(basic, ctx){
+  const TC = ctx.TC;
+  // Insurance suggestion first (doesn't override play; separate note).
+  let insurance = null;
+  indexRules.forEach(rule => {
+    if (rule.name.startsWith('Surr') || rule.name==='Insurance') return;
+  });
+  // Play deviations:
+  for (const rule of indexRules){
+    if (rule.name==='Insurance') continue;
+    if (rule.applies(ctx) && TC >= rule.thresh){
+      return {action: rule.whenTrue, note: `Index ${rule.name} triggered at TC ≥ ${rule.thresh}`};
+    }
+  }
+  return {action: basic, note: null};
+}
+
+function advise(){
+  const ctx = {
+    type: handType.value,
+    p: parseInt(playerVal.value,10),
+    dealer: dealerUp.value,
+    S17: ruleS17.checked,
+    DAS: ruleDAS.checked,
+    LS: ruleLS.checked,
+    TC: getCurrentTC()
+  };
+  tcForAdvice.textContent = ctx.TC.toFixed(2);
+
+  // Insurance suggestion
+  let insText = '';
+  const insRule = indexRules.find(r => r.name==='Insurance');
+  if (ctx.dealer==='A'){
+    insText = (ctx.TC >= insRule.thresh) ? ' | Insurance: TAKE (TC ≥ +3)' : ' | Insurance: Decline';
+  }
+
+  // Base recommendation from basic strategy
+  const base = basicStrategy(ctx.type, ctx.p, ctx.dealer, {S17:ctx.S17, DAS:ctx.DAS, LS:ctx.LS});
+
+  // Apply index deviations
+  const deviated = applyIndices(base, ctx);
+
+  // Fab 4 surrender may override on top if threshold met
+  let surrNote = '';
+  if (ctx.LS){
+    const surrRule = indexRules.find(r => r.name.startsWith('Surr') && r.applies(ctx));
+    if (surrRule && ctx.TC >= surrRule.thresh){
+      adviceText.textContent = `SURRENDER (Fab 4: ${surrRule.name} at TC ≥ ${surrRule.thresh})${insText}`;
+      return;
+    }
+  }
+
+  // If basic suggested SURRENDER_OR_*, refine it with TC using Fab 4 if available
+  if (base.startsWith('SURRENDER_OR_') && !ctx.LS){
+    // No surrender option at table; drop fallback
+    const fallback = base.replace('SURRENDER_OR_','');
+    adviceText.textContent = `${fallback}${insText}`;
+    return;
+  }
+  if (base.startsWith('SURRENDER_OR_') && ctx.LS){
+    // If LS allowed but no index threshold met, follow the "OR" fallback
+    const fallback = base.replace('SURRENDER_OR_','');
+    adviceText.textContent = `${fallback}${insText}`;
+    return;
+  }
+
+  const txt = deviated.note ? `${deviated.action} (${deviated.note})${insText}` : `${deviated.action}${insText}`;
+  adviceText.textContent = txt;
+}
+
+adviseBtn.addEventListener('click', advise);
+// Keep TC shown live
+const ro = new MutationObserver(()=>{ tcForAdvice.textContent = getCurrentTC().toFixed(2); });
+ro.observe(tcEl, {childList:true});
+
+  // Initial render
+  render();
+})();
+</script>
+</body>
+</html>
